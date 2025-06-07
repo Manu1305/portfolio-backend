@@ -527,3 +527,55 @@
 {"level":"info","message":"Environment: development","timestamp":"2025-06-06 11:27:15"}
 {"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-06 11:27:15"}
 {"level":"info","message":"::1 - - [06/Jun/2025:05:58:11 +0000] \"GET /api/download-file/Magic%20of%20Dji%20pocket%203%20%2B%20Keralas%20natural%20beauty%20%23dji%20%20%23djiosmopocket3%20%23viralshots%20%23cinematic.mp4 HTTP/1.1\" 200 1182822 \"http://localhost:5173/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36\"","timestamp":"2025-06-06 11:28:11"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-06 16:45:31"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-06 16:45:31"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-06 16:45:31"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-06 17:42:55"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-06 17:42:55"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-06 17:42:55"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 08:59:08"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 08:59:08"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 08:59:08"}
+{"level":"error","message":"OpenRouter service error: request to https://openrouter.ai/api/v1/chat/completions failed, reason: ","timestamp":"2025-06-07 08:59:43"}
+{"level":"error","message":"FetchError: request to https://openrouter.ai/api/v1/chat/completions failed, reason: \n    at ClientRequest.<anonymous> (F:\\personl\\Projects-code\\portfolio\\newBackend\\node_modules\\node-fetch\\lib\\index.js:1501:11)\n    at ClientRequest.emit (node:events:518:28)\n    at TLSSocket.socketErrorListener (node:_http_client:495:9)\n    at TLSSocket.emit (node:events:518:28)\n    at emitErrorNT (node:internal/streams/destroy:169:8)\n    at emitErrorCloseNT (node:internal/streams/destroy:128:3)\n    at process.processTicksAndRejections (node:internal/process/task_queues:82:21)","timestamp":"2025-06-07 08:59:43"}
+{"level":"info","message":"::1 - - [07/Jun/2025:03:29:43 +0000] \"POST /api/chat HTTP/1.1\" 500 641 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 08:59:43"}
+{"level":"error","message":"OpenRouter service error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}","timestamp":"2025-06-07 09:03:42"}
+{"level":"error","message":"Error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}\n    at generateResponse (F:\\personl\\Projects-code\\portfolio\\newBackend\\services\\openrouter.service.js:25:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async handleChat (F:\\personl\\Projects-code\\portfolio\\newBackend\\controllers\\chat.controller.js:11:24)","timestamp":"2025-06-07 09:03:42"}
+{"level":"info","message":"::1 - - [07/Jun/2025:03:33:42 +0000] \"POST /api/chat HTTP/1.1\" 500 478 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:03:42"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:04:38"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:04:39"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:04:39"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:05:41"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:05:41"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:05:41"}
+{"level":"error","message":"OpenRouter service error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}","timestamp":"2025-06-07 09:05:49"}
+{"level":"error","message":"Error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}\n    at generateResponse (F:\\personl\\Projects-code\\portfolio\\newBackend\\services\\openrouter.service.js:25:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async handleChat (F:\\personl\\Projects-code\\portfolio\\newBackend\\controllers\\chat.controller.js:11:24)","timestamp":"2025-06-07 09:05:49"}
+{"level":"info","message":"::1 - - [07/Jun/2025:03:35:49 +0000] \"POST /api/chat HTTP/1.1\" 500 478 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:05:49"}
+{"level":"error","message":"OpenRouter service error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}","timestamp":"2025-06-07 09:06:41"}
+{"level":"error","message":"Error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}\n    at generateResponseForPortfolio (F:\\personl\\Projects-code\\portfolio\\newBackend\\services\\openrouter.portfolio.service.js:36:19)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async portfolioChat (F:\\personl\\Projects-code\\portfolio\\newBackend\\controllers\\chat.controller.js:28:24)","timestamp":"2025-06-07 09:06:41"}
+{"level":"info","message":"::1 - - [07/Jun/2025:03:36:41 +0000] \"POST /api/chat/portfolio-assistant HTTP/1.1\" 500 503 \"http://localhost:5173/\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36\"","timestamp":"2025-06-07 09:06:41"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:09:33"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:09:33"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:09:33"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:09:34"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:09:34"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:09:34"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:09:37"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:09:37"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:09:37"}
+{"level":"error","message":"OpenRouter service error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}","timestamp":"2025-06-07 09:09:44"}
+{"level":"error","message":"Error: OpenRouter API error: 401 - {\"error\":{\"message\":\"No auth credentials found\",\"code\":401}}\n    at generateResponse (F:\\personl\\Projects-code\\portfolio\\newBackend\\services\\openrouter.service.js:26:23)\n    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)\n    at async handleChat (F:\\personl\\Projects-code\\portfolio\\newBackend\\controllers\\chat.controller.js:11:24)","timestamp":"2025-06-07 09:09:44"}
+{"level":"info","message":"::1 - - [07/Jun/2025:03:39:44 +0000] \"POST /api/chat HTTP/1.1\" 500 478 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:09:44"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:11:21"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:11:21"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:11:21"}
+{"level":"info","message":"::1 - - [07/Jun/2025:03:41:34 +0000] \"POST /api/chat HTTP/1.1\" 200 1847 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:11:34"}
+{"level":"info","message":"::1 - - [07/Jun/2025:04:01:34 +0000] \"POST /api/yt-download HTTP/1.1\" 200 206 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:31:34"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:37:27"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:37:27"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:37:27"}
+{"level":"info","message":"Server started on port 3000","timestamp":"2025-06-07 09:43:10"}
+{"level":"info","message":"Environment: development","timestamp":"2025-06-07 09:43:10"}
+{"level":"info","message":"Server URL: http://localhost:3000","timestamp":"2025-06-07 09:43:10"}
+{"level":"info","message":"::1 - - [07/Jun/2025:04:13:23 +0000] \"POST /api/yt-download HTTP/1.1\" 200 206 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:43:23"}
+{"level":"info","message":"::1 - - [07/Jun/2025:04:25:21 +0000] \"POST /api/yt-download HTTP/1.1\" 200 206 \"-\" \"PostmanRuntime/7.44.0\"","timestamp":"2025-06-07 09:55:21"}
