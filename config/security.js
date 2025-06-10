@@ -13,12 +13,17 @@ function setupSecurity(app) {
         allowedOrigins.push('http://localhost:5173');
     }
 
-    // CORS configuration
+    // CORS configuration - Allow all origins for development/testing
     app.use(cors({
-        origin: allowedOrigins,
-        methods: ['GET', 'POST'],
-        allowedHeaders: ['Content-Type', 'X-API-KEY']
+        origin: process.env.NODE_ENV === 'production' ? allowedOrigins : true, // Allow all origins in development
+        methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+        allowedHeaders: ['Content-Type', 'X-API-KEY', 'x-api-key', 'Authorization'],
+        credentials: true, // Allow credentials
+        optionsSuccessStatus: 200 // Some legacy browsers choke on 204
     }));
+
+    // Handle preflight requests explicitly
+    app.options('*', cors());
 
     // Disable X-Powered-By header
     app.disable('x-powered-by');

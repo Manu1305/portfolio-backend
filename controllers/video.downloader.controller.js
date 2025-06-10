@@ -163,7 +163,7 @@ async function serveFile(req, res, next) {
 
         console.log('Serving file request for:', decodedFilename);
         console.log('Full file path:', filePath);
-
+s
         // Check if file exists
         if (!fs.existsSync(filePath)) {
             console.error('File not found:', filePath);
