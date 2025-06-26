@@ -3,7 +3,7 @@ const { exec } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { promisify } = require('util');
-
+const DEFAULT_COOKIES_PATH = '/home/ubuntu/cookies.txt';
 const execAsync = promisify(exec);
 
 // Helper function to sanitize filename
@@ -33,13 +33,16 @@ async function waitForFile(filePath, maxRetries = 10, delayMs = 1000) {
 async function downloadYtVideo(url, platform = 'youtube') {
     try {
         const outputPath = './downloads';
+        const cookiesPath = DEFAULT_COOKIES_PATH;
+        const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
+        const useCookies = isYouTube && fs.existsSync(cookiesPath);
 
-        // Create downloads directory if it doesn't exist
+        // Create downloads directory if needed
         if (!fs.existsSync(outputPath)) {
             fs.mkdirSync(outputPath, { recursive: true });
         }
 
-        // Get list of files before download for comparison
+        // Get list of files before download
         const filesBefore = fs.existsSync(outputPath) ? fs.readdirSync(outputPath) : [];
 
         // Method 1: Try with yt-dlp-wrap first
@@ -60,8 +63,14 @@ async function downloadYtVideo(url, platform = 'youtube') {
                 '--extractor-retries', '3',
                 '--ignore-errors',
                 '--force-ipv4',
-                '--restrict-filenames' // This helps with special characters
+                '--restrict-filenames'
             ];
+
+            // ADD COOKIES SUPPORT HERE
+            if (useCookies) {
+                console.log(`Using cookies from: ${cookiesPath}`);
+                downloadOptions.push('--cookies', cookiesPath);
+            }
 
             const result = await ytDlpWrap.execPromise(downloadOptions);
 
@@ -108,24 +117,30 @@ async function downloadYtVideo(url, platform = 'youtube') {
             console.log('yt-dlp-wrap failed, trying direct command...', wrapError.message);
 
             // Method 2: Use direct yt-dlp command (fallback)
-            const command = `yt-dlp "${url}" \\
-                --user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \\
-                --add-header "Accept-Language:en-US,en;q=0.9" \\
-                --add-header "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" \\
-                --sleep-interval 1 \\
-                --max-sleep-interval 3 \\
-                --extractor-retries 3 \\
-                --fragment-retries 3 \\
-                --ignore-errors \\
-                --no-playlist \\
-                --format "best[ext=mp4]/best" \\
-                --restrict-filenames \\
-                -o "${outputPath}/%(title)s.%(ext)s" \\
-                --print "after_move:filepath"`;
+            let command = `yt-dlp "${url}" `;
+
+            // ADD COOKIES TO DIRECT COMMAND
+            if (useCookies) {
+                command += `--cookies "${cookiesPath}" `;
+            }
+
+            command += `--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" ` +
+                `--add-header "Accept-Language:en-US,en;q=0.9" ` +
+                `--add-header "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" ` +
+                `--sleep-interval 1 ` +
+                `--max-sleep-interval 3 ` +
+                `--extractor-retries 3 ` +
+                `--fragment-retries 3 ` +
+                `--ignore-errors ` +
+                `--no-playlist ` +
+                `--format "best[ext=mp4]/best" ` +
+                `--restrict-filenames ` +
+                `-o "${outputPath}/%(title)s.%(ext)s" ` +
+                `--print "after_move:filepath"`;
 
             console.log('Executing direct yt-dlp command...');
             const { stdout, stderr } = await execAsync(command, {
-                timeout: 300000, // 5 minutes timeout
+                timeout: 300000,
                 cwd: process.cwd()
             });
 
