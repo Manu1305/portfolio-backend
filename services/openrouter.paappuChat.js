@@ -2,25 +2,45 @@ const fetch = require('node-fetch');
 const { OPENROUTER_API_KEY, SITE_URL, SITE_NAME } = require('../config/constants');
 const logger = require('../utils/logger');
 const portfolioChatSystemPrompt = require('../texts/portfolio');
+const sonaData = require('../texts/paappu'); // Contains { health, motivation, memories }
 
-async function generateResponseForPortfolio(userMessage, chatHistory = [],  model) {
+async function generateResponseForPaapu(userMessage, chatHistory = [], category, model) {
     try {
-        // Format message history for OpenRouter
-        let formattedHistory = [];
+        // Add category-based context if applicable
+        let additionalPrompt = '';
+        if (category === 'health') {
+            additionalPrompt = sonaData.health;
+        } else if (category === 'motivation') {
+            additionalPrompt = sonaData.motivation;
+        } else if (category === 'memories') {
+            additionalPrompt = sonaData.memories;
+        }
 
+        // Final system prompt
+        const finalSystemPrompt = `
+This AI is designed specifically for romantic and heartfelt conversations. 
+It should only interact with Sona (also lovingly known as Paaru or Queen). 
+The assistant must always be respectful and refer to her as "queen" or "ma'am" in every reply.
+
+${portfolioChatSystemPrompt}
+
+${additionalPrompt}
+        `.trim();
+
+        // Format chat history
+        let formattedHistory = [];
         if (chatHistory && Array.isArray(chatHistory)) {
             formattedHistory = chatHistory.map(msg => ({
-                role: msg.role, // 'user' or 'assistant'
+                role: msg.role,
                 content: msg.content
             }));
         }
 
-        // Add current user message
+        // Add current message
         const currentMessage = { role: 'user', content: userMessage };
 
-        // Build messages array
         const messages = [
-            { role: 'system', content: portfolioChatSystemPrompt },
+            { role: 'system', content: finalSystemPrompt },
             ...formattedHistory,
             currentMessage
         ];
@@ -48,7 +68,7 @@ async function generateResponseForPortfolio(userMessage, chatHistory = [],  mode
             throw new Error(`OpenRouter API error: ${response.status} - ${errorData}`);
         }
 
-        const data = await response.json();
+        const data = await respsssonse.json();
         return {
             response: data.choices[0]?.message?.content || 'No response generated',
             model_used: model
@@ -59,4 +79,4 @@ async function generateResponseForPortfolio(userMessage, chatHistory = [],  mode
     }
 }
 
-module.exports = { generateResponseForPortfolio };
+module.exports = { generateResponseForPaapu };

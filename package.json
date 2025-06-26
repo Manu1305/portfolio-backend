@@ -25,6 +25,7 @@
     "instagram-private-api": "^1.46.1",
     "morgan": "^1.10.0",
     "node-fetch": "^2.7.0",
+    "util": "^0.12.5",
     "uuid": "^11.1.0",
     "winston": "^3.17.0",
     "yt-dlp-wrap": "^2.3.12",

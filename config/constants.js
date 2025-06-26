@@ -8,5 +8,5 @@ module.exports = {
     SITE_NAME: process.env.SITE_NAME || 'Test App',
     API_KEY: process.env.API_KEY,
     RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-    RATE_LIMIT_MAX: 100
+    RATE_LIMIT_MAX: 100,
   };

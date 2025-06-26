@@ -6,6 +6,30 @@ const { promisify } = require('util');
 
 const execAsync = promisify(exec);
 
+// Helper function to sanitize filename
+function sanitizeFilename(filename) {
+    return filename
+        .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+        .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '') // Remove emojis
+        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
+        .trim();
+}
+
+// Helper function to check if file exists (with retry mechanism)
+async function waitForFile(filePath, maxRetries = 10, delayMs = 1000) {
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            if (fs.existsSync(filePath)) {
+                return true;
+            }
+        } catch (error) {
+            console.log(`Attempt ${i + 1}: File check failed, retrying...`);
+        }
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+    return false;
+}
+
 async function downloadYtVideo(url, platform = 'youtube') {
     try {
         const outputPath = './downloads';
@@ -14,6 +38,9 @@ async function downloadYtVideo(url, platform = 'youtube') {
         if (!fs.existsSync(outputPath)) {
             fs.mkdirSync(outputPath, { recursive: true });
         }
+
+        // Get list of files before download for comparison
+        const filesBefore = fs.existsSync(outputPath) ? fs.readdirSync(outputPath) : [];
 
         // Method 1: Try with yt-dlp-wrap first
         try {
@@ -32,27 +59,53 @@ async function downloadYtVideo(url, platform = 'youtube') {
                 '--max-sleep-interval', '3',
                 '--extractor-retries', '3',
                 '--ignore-errors',
-                '--force-ipv4'
+                '--force-ipv4',
+                '--restrict-filenames' // This helps with special characters
             ];
 
             const result = await ytDlpWrap.execPromise(downloadOptions);
 
-            // Process result from yt-dlp-wrap
-            const lines = result.split('\n').filter(line => line.trim());
-            const filePath = lines[lines.length - 1].trim();
+            // Wait a bit for file system to catch up
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-            if (fs.existsSync(filePath)) {
-                return {
-                    success: true,
-                    message: 'Video downloaded successfully (yt-dlp-wrap)',
-                    outputPath: outputPath,
-                    fileName: path.basename(filePath),
-                    filePath: filePath
-                };
+            // Check for new files in directory
+            const filesAfter = fs.readdirSync(outputPath);
+            const newFiles = filesAfter.filter(file => !filesBefore.includes(file));
+
+            if (newFiles.length > 0) {
+                const downloadedFile = newFiles[0];
+                const filePath = path.join(outputPath, downloadedFile);
+
+                if (fs.existsSync(filePath)) {
+                    return {
+                        success: true,
+                        message: 'Video downloaded successfully (yt-dlp-wrap)',
+                        outputPath: outputPath,
+                        fileName: downloadedFile,
+                        filePath: filePath
+                    };
+                }
+            }
+
+            // Fallback: Try to parse the result output
+            const lines = result.split('\n').filter(line => line.trim());
+            for (const line of lines) {
+                if (line.includes(outputPath) && (line.includes('.mp4') || line.includes('.webm') || line.includes('.mkv'))) {
+                    const possiblePath = line.trim();
+                    if (fs.existsSync(possiblePath)) {
+                        return {
+                            success: true,
+                            message: 'Video downloaded successfully (yt-dlp-wrap)',
+                            outputPath: outputPath,
+                            fileName: path.basename(possiblePath),
+                            filePath: possiblePath
+                        };
+                    }
+                }
             }
 
         } catch (wrapError) {
-            console.log('yt-dlp-wrap failed, trying direct command...');
+            console.log('yt-dlp-wrap failed, trying direct command...', wrapError.message);
 
             // Method 2: Use direct yt-dlp command (fallback)
             const command = `yt-dlp "${url}" \\
@@ -66,6 +119,7 @@ async function downloadYtVideo(url, platform = 'youtube') {
                 --ignore-errors \\
                 --no-playlist \\
                 --format "best[ext=mp4]/best" \\
+                --restrict-filenames \\
                 -o "${outputPath}/%(title)s.%(ext)s" \\
                 --print "after_move:filepath"`;
 
@@ -79,46 +133,67 @@ async function downloadYtVideo(url, platform = 'youtube') {
                 throw new Error('YouTube bot detection - try different video or use cookies');
             }
 
-            const lines = stdout.split('\n').filter(line => line.trim());
-            const filePath = lines[lines.length - 1].trim();
+            // Wait a bit for file system to catch up
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
-            if (fs.existsSync(filePath)) {
+            // Check for new files
+            const filesAfterDirect = fs.readdirSync(outputPath);
+            const newFilesAfterDirect = filesAfterDirect.filter(file => !filesBefore.includes(file));
+
+            if (newFilesAfterDirect.length > 0) {
+                const downloadedFile = newFilesAfterDirect[0];
+                const filePath = path.join(outputPath, downloadedFile);
+
                 return {
                     success: true,
                     message: 'Video downloaded successfully (direct command)',
                     outputPath: outputPath,
-                    fileName: path.basename(filePath),
+                    fileName: downloadedFile,
                     filePath: filePath
                 };
             }
         }
 
-        // Fallback: Check for any recent files in downloads directory
+        // Final fallback: Check for any recent files in downloads directory
         console.log('Checking for recently downloaded files...');
         const files = fs.readdirSync(outputPath);
 
         if (files.length > 0) {
             // Get the most recently created file
-            const filesWithStats = files.map(file => ({
-                name: file,
-                path: path.join(outputPath, file),
-                stats: fs.statSync(path.join(outputPath, file))
-            }));
+            const filesWithStats = [];
 
-            const latestFile = filesWithStats.sort((a, b) =>
-                b.stats.mtime.getTime() - a.stats.mtime.getTime()
-            )[0];
+            for (const file of files) {
+                try {
+                    const filePath = path.join(outputPath, file);
+                    const stats = fs.statSync(filePath);
+                    filesWithStats.push({
+                        name: file,
+                        path: filePath,
+                        stats: stats
+                    });
+                } catch (statError) {
+                    console.log(`Could not stat file ${file}:`, statError.message);
+                    // Continue with other files
+                    continue;
+                }
+            }
 
-            // Check if file was created in the last 2 minutes
-            const twoMinutesAgo = Date.now() - (2 * 60 * 1000);
-            if (latestFile.stats.mtime.getTime() > twoMinutesAgo) {
-                return {
-                    success: true,
-                    message: 'Video downloaded successfully (fallback detection)',
-                    outputPath: outputPath,
-                    fileName: latestFile.name,
-                    filePath: latestFile.path
-                };
+            if (filesWithStats.length > 0) {
+                const latestFile = filesWithStats.sort((a, b) =>
+                    b.stats.mtime.getTime() - a.stats.mtime.getTime()
+                )[0];
+
+                // Check if file was created in the last 5 minutes
+                const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
+                if (latestFile.stats.mtime.getTime() > fiveMinutesAgo) {
+                    return {
+                        success: true,
+                        message: 'Video downloaded successfully (fallback detection)',
+                        outputPath: outputPath,
+                        fileName: latestFile.name,
+                        filePath: latestFile.path
+                    };
+                }
             }
         }
 
@@ -161,7 +236,8 @@ async function downloadYtVideoWithCookies(url, platform = 'youtube', cookiesPath
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--sleep-interval', '1',
             '--extractor-retries', '3',
-            '--ignore-errors'
+            '--ignore-errors',
+            '--restrict-filenames' // Add this to handle special characters
         ];
 
         // Add cookie support if cookies file exists
@@ -172,35 +248,24 @@ async function downloadYtVideoWithCookies(url, platform = 'youtube', cookiesPath
 
         const result = await ytDlpWrap.execPromise(downloadOptions);
 
-        const lines = result.split('\n').filter(line => line.trim());
-        const filePath = lines[lines.length - 1].trim();
-        const fileName = path.basename(filePath);
+        // Wait for file system
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-        if (!fs.existsSync(filePath)) {
-            const files = fs.readdirSync(outputPath);
-            if (files.length > 0) {
-                const latestFile = files[files.length - 1];
-                const fallbackPath = path.join(outputPath, latestFile);
+        const files = fs.readdirSync(outputPath);
+        if (files.length > 0) {
+            const latestFile = files[files.length - 1];
+            const fallbackPath = path.join(outputPath, latestFile);
 
-                return {
-                    success: true,
-                    message: 'Video downloaded successfully',
-                    outputPath: outputPath,
-                    fileName: latestFile,
-                    filePath: fallbackPath
-                };
-            } else {
-                throw new Error('Downloaded file not found');
-            }
+            return {
+                success: true,
+                message: 'Video downloaded successfully',
+                outputPath: outputPath,
+                fileName: latestFile,
+                filePath: fallbackPath
+            };
+        } else {
+            throw new Error('Downloaded file not found');
         }
-
-        return {
-            success: true,
-            message: 'Video downloaded successfully',
-            outputPath: outputPath,
-            fileName: fileName,
-            filePath: filePath
-        };
 
     } catch (error) {
         console.error('Download error:', error);
