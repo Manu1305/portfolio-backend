@@ -5,15 +5,27 @@ const fs = require('fs');
 const { promisify } = require('util');
 const DEFAULT_COOKIES_PATH = '/home/ubuntu/cookies.txt';
 const execAsync = promisify(exec);
+const { uploadToS3 } = require('../config/helpers');
 
-// Helper function to sanitize filename
-function sanitizeFilename(filename) {
+// Helper function to sanitize filename - Enhanced for Unicode handling
+const sanitizeFilename = (filename) => {
     return filename
-        .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
-        .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '') // Remove emojis
-        .replace(/\s+/g, ' ') // Replace multiple spaces with single space
-        .trim();
-}
+        // Remove invalid characters for file systems
+        .replace(/[<>:"/\\|?*]/g, '')
+        // Remove emojis and symbols
+        .replace(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu, '')
+        // Replace problematic Unicode characters with ASCII equivalents or remove them
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // Remove combining diacritical marks
+        // Convert to ASCII-safe characters where possible
+        .replace(/[^\x20-\x7E]/g, '') // Keep only printable ASCII characters
+        // Clean up spaces
+        .replace(/\s+/g, '_')
+        .replace(/_{2,}/g, '_')
+        .trim()
+        .replace(/^_+|_+$/g, '') // Remove leading/trailing underscores
+        || `video_${Date.now()}`; // Fallback if everything gets removed
+};
 
 // Helper function to check if file exists (with retry mechanism)
 async function waitForFile(filePath, maxRetries = 10, delayMs = 1000) {
@@ -30,209 +42,197 @@ async function waitForFile(filePath, maxRetries = 10, delayMs = 1000) {
     return false;
 }
 
-async function downloadYtVideo(url, platform = 'youtube') {
+// Get video info first to get the title
+const getVideoInfo = async (url) => {
     try {
-        const outputPath = './downloads';
-        const cookiesPath = DEFAULT_COOKIES_PATH;
-        const isYouTube = url.includes('youtube.com') || url.includes('youtu.be');
-        const useCookies = isYouTube && fs.existsSync(cookiesPath);
+        const ytDlpWrap = new YtDlpWrap();
+        const options = [
+            url,
+            '--dump-json',
+            '--no-playlist',
+            '--skip-download'
+        ];
 
-        // Create downloads directory if needed
+        const result = await ytDlpWrap.execPromise(options);
+        const videoInfo = JSON.parse(result);
+        return {
+            title: videoInfo.title,
+            duration: videoInfo.duration,
+            uploader: videoInfo.uploader
+        };
+    } catch (error) {
+        console.error('Error getting video info:', error);
+        return null;
+    }
+};
+
+const downloadYtVideo = async (url) => {
+    const outputPath = './downloads';
+    const ytDlpWrap = new YtDlpWrap();
+
+    try {
+        // Ensure output directory exists
         if (!fs.existsSync(outputPath)) {
             fs.mkdirSync(outputPath, { recursive: true });
         }
 
-        // Get list of files before download
-        const filesBefore = fs.existsSync(outputPath) ? fs.readdirSync(outputPath) : [];
-
-        // Method 1: Try with yt-dlp-wrap first
-        try {
-            console.log('Trying yt-dlp-wrap method...');
-            const ytDlpWrap = new YtDlpWrap();
-
-            const downloadOptions = [
-                url,
-                '-o', `${outputPath}/%(title)s.%(ext)s`,
-                '--no-playlist',
-                '--format', 'best[ext=mp4]/best',
-                '--print', 'after_move:filepath',
-                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                '--add-header', 'Accept-Language:en-US,en;q=0.9',
-                '--sleep-interval', '1',
-                '--max-sleep-interval', '3',
-                '--extractor-retries', '3',
-                '--ignore-errors',
-                '--force-ipv4',
-                '--restrict-filenames'
-            ];
-
-            // ADD COOKIES SUPPORT HERE
-            if (useCookies) {
-                console.log(`Using cookies from: ${cookiesPath}`);
-                downloadOptions.push('--cookies', cookiesPath);
-            }
-
-            const result = await ytDlpWrap.execPromise(downloadOptions);
-
-            // Wait a bit for file system to catch up
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // Check for new files in directory
-            const filesAfter = fs.readdirSync(outputPath);
-            const newFiles = filesAfter.filter(file => !filesBefore.includes(file));
-
-            if (newFiles.length > 0) {
-                const downloadedFile = newFiles[0];
-                const filePath = path.join(outputPath, downloadedFile);
-
-                if (fs.existsSync(filePath)) {
-                    return {
-                        success: true,
-                        message: 'Video downloaded successfully (yt-dlp-wrap)',
-                        outputPath: outputPath,
-                        fileName: downloadedFile,
-                        filePath: filePath
-                    };
-                }
-            }
-
-            // Fallback: Try to parse the result output
-            const lines = result.split('\n').filter(line => line.trim());
-            for (const line of lines) {
-                if (line.includes(outputPath) && (line.includes('.mp4') || line.includes('.webm') || line.includes('.mkv'))) {
-                    const possiblePath = line.trim();
-                    if (fs.existsSync(possiblePath)) {
-                        return {
-                            success: true,
-                            message: 'Video downloaded successfully (yt-dlp-wrap)',
-                            outputPath: outputPath,
-                            fileName: path.basename(possiblePath),
-                            filePath: possiblePath
-                        };
-                    }
-                }
-            }
-
-        } catch (wrapError) {
-            console.log('yt-dlp-wrap failed, trying direct command...', wrapError.message);
-
-            // Method 2: Use direct yt-dlp command (fallback)
-            let command = `yt-dlp "${url}" `;
-
-            // ADD COOKIES TO DIRECT COMMAND
-            if (useCookies) {
-                command += `--cookies "${cookiesPath}" `;
-            }
-
-            command += `--user-agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" ` +
-                `--add-header "Accept-Language:en-US,en;q=0.9" ` +
-                `--add-header "Accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" ` +
-                `--sleep-interval 1 ` +
-                `--max-sleep-interval 3 ` +
-                `--extractor-retries 3 ` +
-                `--fragment-retries 3 ` +
-                `--ignore-errors ` +
-                `--no-playlist ` +
-                `--format "best[ext=mp4]/best" ` +
-                `--restrict-filenames ` +
-                `-o "${outputPath}/%(title)s.%(ext)s" ` +
-                `--print "after_move:filepath"`;
-
-            console.log('Executing direct yt-dlp command...');
-            const { stdout, stderr } = await execAsync(command, {
-                timeout: 300000,
-                cwd: process.cwd()
-            });
-
-            if (stderr && stderr.includes('Sign in to confirm')) {
-                throw new Error('YouTube bot detection - try different video or use cookies');
-            }
-
-            // Wait a bit for file system to catch up
-            await new Promise(resolve => setTimeout(resolve, 2000));
-
-            // Check for new files
-            const filesAfterDirect = fs.readdirSync(outputPath);
-            const newFilesAfterDirect = filesAfterDirect.filter(file => !filesBefore.includes(file));
-
-            if (newFilesAfterDirect.length > 0) {
-                const downloadedFile = newFilesAfterDirect[0];
-                const filePath = path.join(outputPath, downloadedFile);
-
-                return {
-                    success: true,
-                    message: 'Video downloaded successfully (direct command)',
-                    outputPath: outputPath,
-                    fileName: downloadedFile,
-                    filePath: filePath
-                };
-            }
+        // Get video info first
+        console.log('Getting video information...');
+        const videoInfo = await getVideoInfo(url);
+        if (!videoInfo) {
+            throw new Error('Could not retrieve video information');
         }
 
-        // Final fallback: Check for any recent files in downloads directory
-        console.log('Checking for recently downloaded files...');
-        const files = fs.readdirSync(outputPath);
+        console.log(`Video Title: ${videoInfo.title}`);
 
-        if (files.length > 0) {
-            // Get the most recently created file
-            const filesWithStats = [];
+        // Generate a unique filename with better sanitization
+        const timestamp = Date.now();
+        const safeTitle = sanitizeFilename(videoInfo.title) || `video_${timestamp}`;
+        const filename = `${safeTitle}_${timestamp}`;
+        const outputTemplate = path.join(outputPath, `${filename}.%(ext)s`);
+
+        // Enhanced download options
+        const options = [
+            url,
+            '-o', outputTemplate,
+            '--no-playlist',
+            '--format', 'best[height<=720][ext=mp4]/best[ext=mp4]/best',
+            '--merge-output-format', 'mp4',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            '--restrict-filenames',
+            '--ignore-errors',
+            '--no-check-certificate',
+            '--sleep-interval', '1',
+            '--max-sleep-interval', '5',
+            '--extractor-retries', '3',
+            '--socket-timeout', '30'
+        ];
+
+        console.log('Starting download...');
+        console.log('Download options:', options);
+
+        const result = await ytDlpWrap.execPromise(options);
+        console.log('yt-dlp output:', result);
+
+        // Wait for file system sync
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        // Find the downloaded file
+        const files = fs.readdirSync(outputPath);
+        console.log('Files in download directory:', files);
+
+        // Look for the file that matches our expected pattern
+        const expectedPattern = `${filename}.mp4`;
+        console.log('Looking for file pattern:', expectedPattern);
+
+        let downloadedFile = null;
+
+        // First, try to find exact match
+        downloadedFile = files.find(file => file === expectedPattern);
+
+        // If not found, look for files created in the last 30 seconds
+        if (!downloadedFile) {
+            const now = Date.now();
+            let latestTime = 0;
 
             for (const file of files) {
+                const filePath = path.join(outputPath, file);
                 try {
-                    const filePath = path.join(outputPath, file);
                     const stats = fs.statSync(filePath);
-                    filesWithStats.push({
-                        name: file,
-                        path: filePath,
-                        stats: stats
-                    });
-                } catch (statError) {
-                    console.log(`Could not stat file ${file}:`, statError.message);
-                    // Continue with other files
+                    const ageInSeconds = (now - stats.mtimeMs) / 1000;
+
+                    // Only consider files created in the last 30 seconds
+                    if (ageInSeconds <= 30 && stats.mtimeMs > latestTime) {
+                        latestTime = stats.mtimeMs;
+                        downloadedFile = file;
+                    }
+                } catch (error) {
+                    console.log('Error checking file stats for:', file, error.message);
                     continue;
                 }
             }
-
-            if (filesWithStats.length > 0) {
-                const latestFile = filesWithStats.sort((a, b) =>
-                    b.stats.mtime.getTime() - a.stats.mtime.getTime()
-                )[0];
-
-                // Check if file was created in the last 5 minutes
-                const fiveMinutesAgo = Date.now() - (5 * 60 * 1000);
-                if (latestFile.stats.mtime.getTime() > fiveMinutesAgo) {
-                    return {
-                        success: true,
-                        message: 'Video downloaded successfully (fallback detection)',
-                        outputPath: outputPath,
-                        fileName: latestFile.name,
-                        filePath: latestFile.path
-                    };
-                }
-            }
         }
 
-        throw new Error('No downloaded file found after all attempts');
+        if (!downloadedFile) {
+            throw new Error('No recently downloaded file found');
+        }
+
+        console.log('Selected downloaded file:', downloadedFile);
+
+        const filePath = path.join(outputPath, downloadedFile);
+        console.log('Downloaded file path:', filePath);
+
+        // Verify file exists and has content
+        if (!fs.existsSync(filePath)) {
+            throw new Error('Downloaded file does not exist');
+        }
+
+        const fileStats = fs.statSync(filePath);
+        if (fileStats.size === 0) {
+            throw new Error('Downloaded file is empty');
+        }
+
+        console.log(`File downloaded successfully: ${downloadedFile} (${fileStats.size} bytes)`);
+
+        // Upload to S3
+        const sanitizedName = sanitizeFilename(downloadedFile);
+        const s3Key = `videos/${sanitizedName}`;
+
+        console.log('Uploading to S3...');
+        const s3Url = await uploadToS3(filePath, s3Key);
+
+        // Clean up local file
+        fs.unlinkSync(filePath);
+
+        return {
+            success: true,
+            message: 'Video downloaded and uploaded to S3 successfully',
+            fileName: sanitizedName,
+            s3Url,
+            videoInfo
+        };
 
     } catch (error) {
         console.error('Download error:', error);
 
-        // Check if it's the bot detection error
-        if (error.message && error.message.includes('Sign in to confirm you\'re not a bot')) {
-            return {
-                success: false,
-                error: 'YouTube has detected automated access. This is common on cloud servers. Try using a different video URL or implement cookie authentication.'
-            };
+        // Clean up any partial files (but not our successfully downloaded file)
+        try {
+            const files = fs.readdirSync(outputPath);
+            const now = Date.now();
+
+            for (const file of files) {
+                // Skip the file we just successfully processed
+                if (file === downloadedFile) {
+                    continue;
+                }
+
+                const filePath = path.join(outputPath, file);
+                try {
+                    const stats = fs.statSync(filePath);
+                    const ageInMinutes = (now - stats.mtimeMs) / (1000 * 60);
+
+                    // Only remove files older than 1 hour to avoid removing user files
+                    if (ageInMinutes > 60) {
+                        console.log('Cleaning up old file:', file);
+                        // Uncomment the next line if you want to actually delete old files
+                        // fs.unlinkSync(filePath);
+                    }
+                } catch (statError) {
+                    console.log('Could not check file stats for cleanup:', file);
+                }
+            }
+        } catch (cleanupError) {
+            console.error('Error during cleanup (non-critical):', cleanupError.message);
         }
 
         return {
             success: false,
-            error: error.message
+            error: error.message || 'Download failed'
         };
     }
-}
+};
 
-// Alternative function with cookie support (if you can provide cookies)
+// Alternative function with better error handling and cookies
 async function downloadYtVideoWithCookies(url, platform = 'youtube', cookiesPath = null) {
     try {
         const ytDlpWrap = new YtDlpWrap();
@@ -242,17 +242,31 @@ async function downloadYtVideoWithCookies(url, platform = 'youtube', cookiesPath
             fs.mkdirSync(outputPath, { recursive: true });
         }
 
+        // Get video info first
+        const videoInfo = await getVideoInfo(url);
+        if (!videoInfo) {
+            throw new Error('Could not retrieve video information');
+        }
+
+        const timestamp = Date.now();
+        const safeTitle = sanitizeFilename(videoInfo.title) || `video_${timestamp}`;
+        const filename = `${safeTitle}_${timestamp}`;
+        const outputTemplate = path.join(outputPath, `${filename}.%(ext)s`);
+
         const downloadOptions = [
             url,
-            '-o', `${outputPath}/%(title)s.%(ext)s`,
+            '-o', outputTemplate,
             '--no-playlist',
-            '--format', 'best[ext=mp4]/best',
-            '--print', 'after_move:filepath',
+            '--format', 'best[height<=720][ext=mp4]/best[ext=mp4]/best',
+            '--merge-output-format', 'mp4',
             '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             '--sleep-interval', '1',
+            '--max-sleep-interval', '5',
             '--extractor-retries', '3',
             '--ignore-errors',
-            '--restrict-filenames' // Add this to handle special characters
+            '--restrict-filenames',
+            '--no-check-certificate',
+            '--socket-timeout', '30'
         ];
 
         // Add cookie support if cookies file exists
@@ -261,26 +275,51 @@ async function downloadYtVideoWithCookies(url, platform = 'youtube', cookiesPath
             console.log('Using cookies from:', cookiesPath);
         }
 
+        console.log('Starting download with cookies...');
         const result = await ytDlpWrap.execPromise(downloadOptions);
+        console.log('Download result:', result);
 
         // Wait for file system
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
+        // Find the downloaded file
         const files = fs.readdirSync(outputPath);
-        if (files.length > 0) {
-            const latestFile = files[files.length - 1];
-            const fallbackPath = path.join(outputPath, latestFile);
+        let downloadedFile = null;
+        let latestTime = 0;
 
-            return {
-                success: true,
-                message: 'Video downloaded successfully',
-                outputPath: outputPath,
-                fileName: latestFile,
-                filePath: fallbackPath
-            };
-        } else {
-            throw new Error('Downloaded file not found');
+        for (const file of files) {
+            const filePath = path.join(outputPath, file);
+            const stats = fs.statSync(filePath);
+            if (stats.mtimeMs > latestTime) {
+                latestTime = stats.mtimeMs;
+                downloadedFile = file;
+            }
         }
+
+        if (!downloadedFile) {
+            throw new Error('No downloaded file found');
+        }
+
+        const filePath = path.join(outputPath, downloadedFile);
+
+        // Verify file
+        if (!fs.existsSync(filePath)) {
+            throw new Error('Downloaded file does not exist');
+        }
+
+        const fileStats = fs.statSync(filePath);
+        if (fileStats.size === 0) {
+            throw new Error('Downloaded file is empty');
+        }
+
+        return {
+            success: true,
+            message: 'Video downloaded successfully',
+            outputPath: outputPath,
+            fileName: downloadedFile,
+            filePath: filePath,
+            videoInfo
+        };
 
     } catch (error) {
         console.error('Download error:', error);
